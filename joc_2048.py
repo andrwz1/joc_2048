@@ -7,7 +7,7 @@ from copy import deepcopy
 pygame.init()
 pygame.font.init()
 screen = pygame.display.set_mode((400, 500))
-pygame.display.set_caption("2048 game")
+pygame.display.set_caption("Joc 2048")
 clock = pygame.time.Clock()
 running = True
 
