@@ -81,10 +81,17 @@ LEVEL_TARGETS = {
     5: 8192
 }
 
+# mesaj pentru schimbare nivel
+level_message_until = 0            # timestamp în ms până când se afișează mesajul
+LEVEL_MESSAGE_DURATION_MS = 1500   # durată afișare mesaj în ms
+
 # fonts
 font_small = pygame.font.SysFont(None, 18)
 font_med = pygame.font.SysFont(None, 25)
 font_big = pygame.font.SysFont(None, 40)
+
+#music
+pygame.mixer.init
 
 
 def spawn_tile(board):
@@ -194,17 +201,30 @@ if high_score < score:
     high_score = score
 
 def next_level():
-    global grid, score, moves, game_over, current_level
+    global grid, score, moves, game_over, current_level, GRID_SIZE, level_message_until
     # avansăm nivelul
     current_level += 1
-    # resetăm tabla pentru nivelul următor (configurabil dacă doriți păstrarea scorului)
-    grid = [[0] * GRID_SIZE for _ in range(GRID_SIZE)]
-    score = 0
-    moves = 0
+
+    # creștem dimensiunea tablei (ex: +1 la GRID_SIZE)
+    new_size = GRID_SIZE + 1
+    # limitați dacă doriți (opțional), ex: new_size = min(new_size, 8)
+    GRID_SIZE = new_size
+
+    # creăm o tablă nouă și copiem vechile valori (în colțul stânga-sus)
+    new_grid = [[0] * GRID_SIZE for _ in range(GRID_SIZE)]
+    for r in range(len(grid)):
+        for c in range(len(grid[r])):
+            new_grid[r][c] = grid[r][c]
+    grid = new_grid
+
+    # nu resetez score/moves — păstrează progresul
     game_over = False
-    # spawn două piese de start
+
+    # optional: adaugăm un tile suplimentar pentru spațiul nou
     spawn_tile(grid)
-    spawn_tile(grid)
+
+    # afișăm mesajul de nivel pentru o perioadă scurtă
+    level_message_until = pygame.time.get_ticks() + LEVEL_MESSAGE_DURATION_MS
 
 # main loop
 while running:
@@ -267,35 +287,41 @@ while running:
     
 
 
-    # draw background
+  # draw background
     screen.fill(BACKGROUND_COLOR)
     screen.blit(background_img, (0, 0))
 
-    # board background
-    pygame.draw.rect(screen, WHITE, (20, 120, 360, 360), border_radius=10)
+    # board background (folosim 360x360 ca zonă)
+    board_x, board_y = 20, 120
+    board_size = 360
+    pygame.draw.rect(screen, WHITE, (board_x, board_y, board_size, board_size), border_radius=10)
 
-    # draw grid tiles
+    # calculăm dimensiunea celulelor în funcție de GRID_SIZE
+    padding = 10
+    total_padding = padding * (GRID_SIZE + 1)
+    cell_size = max(10, (board_size - total_padding) // GRID_SIZE)
+
+    # draw grid tiles (dinamic)
     for r in range(GRID_SIZE):
         for c in range(GRID_SIZE):
             val = grid[r][c]
-            x = 30 + c * 90
-            y = 130 + r * 90
-            tile_rect = pygame.Rect(x, y, 80, 80)
+            x = board_x + padding + c * (cell_size + padding)
+            y = board_y + padding + r * (cell_size + padding)
+            tile_rect = pygame.Rect(x, y, cell_size, cell_size)
             color = TILE_COLORS.get(val, EMPTY_COLOR) if val != 0 else EMPTY_COLOR
             pygame.draw.rect(screen, color, tile_rect, border_radius=5)
             if val != 0:
                 # choose text color depending on tile
                 txt_color = WHITE
-                # pick font size based on number width
                 txt = str(val)
-                # center text
-                font_size = 36 if val < 100 else (28 if val < 1000 else 22)
+                # alege dimensiune font proporțională cu cell_size
+                # simplu: scădem cu numărul de cifre
+                digit_count = len(txt)
+                font_size = max(12, int(cell_size * 0.6) - (digit_count - 1) * 4)
                 font_tile = pygame.font.SysFont(None, font_size, bold=True)
                 surf = font_tile.render(txt, True, txt_color)
                 rect = surf.get_rect(center=tile_rect.center)
                 screen.blit(surf, rect)
-
-
 
     # move, score, level, high score
     move_surface = font_med.render(f'Move: {moves}', True, WHITE)
@@ -304,15 +330,19 @@ while running:
     score_surface = font_med.render(f'Score: {score}', True, WHITE)
     screen.blit(score_surface, (300, 80))
 
-    level_surface = font_med.render('Level: 1', True, WHITE)
+    level_surface = font_med.render(f'Level: {current_level}', True, WHITE)
     screen.blit(level_surface, (20, 80))
 
     high_score_surface = font_med.render(f'High Score: {high_score}', True, WHITE)
     screen.blit(high_score_surface, (20, 40))
 
-    level_surface = font_med.render(f'Level: {current_level}', True, WHITE)
-    screen.blit(level_surface, (20, 80))
-
+    # afișare mesaj tranzitoriu "Level n"
+    if pygame.time.get_ticks() < level_message_until:
+        overlay = pygame.Surface((360, 80), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        msg = font_big.render(f'Level {current_level}', True, WHITE)
+        screen.blit(overlay, (20, 180 - 40))  # deasupra tablei
+        screen.blit(msg, (20 + (360 - msg.get_width()) // 2, 180 - 40 + (80 - msg.get_height()) // 2))
     # game over overlay
     if game_over:
         overlay = pygame.Surface((360, 360), pygame.SRCALPHA)
