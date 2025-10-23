@@ -40,17 +40,19 @@ background_img = pygame.transform.scale(background_img, (400, 500))
 
 EMPTY_COLOR = (205, 193, 180)
 TILE_COLORS = {
-    2: (255, 95, 109),      # coral cald, vibrant
+    2: (255, 95, 109),      # coral cald
     4: (255, 146, 76),      # portocaliu bogat
     8: (255, 204, 102),     # galben luminos
     16: (120, 220, 130),    # verde smarald curat
-    32: (72, 202, 228),     # cyan curat, saturat
-    64: (96, 110, 255),     # albastru indigo modern
-    128: (159, 94, 255),    # mov intens, saturat
+    32: (72, 202, 228),     # cyan saturat
+    64: (96, 110, 255),     # albastru indigo
+    128: (159, 94, 255),    # mov intens
     256: (255, 94, 247),    # roz neon
     512: (255, 64, 129),    # fucsia adânc
-    1024: (255, 51, 102),   # roșu saturat, cald
-    2048: (255, 255, 255)   # alb pentru efect de glow final
+    1024: (255, 51, 102),   # roșu saturat
+    2048: (255, 255, 255),  # alb luminos
+    4096: (255, 255, 160),  # galben-alb pal, efect “glow”
+    8192: (255, 255, 210)   # alb cald, highlight final
 }
 
 
@@ -68,6 +70,16 @@ score = 0
 moves = 0
 high_score = 0
 game_over = False
+
+# tinte pentru urmatorul nivel
+current_level = 1
+LEVEL_TARGETS = {
+    1: 128,
+    2: 1024,
+    3: 2048,
+    4: 4096,
+    5: 8192
+}
 
 # fonts
 font_small = pygame.font.SysFont(None, 18)
@@ -181,6 +193,19 @@ restart()
 if high_score < score:
     high_score = score
 
+def next_level():
+    global grid, score, moves, game_over, current_level
+    # avansăm nivelul
+    current_level += 1
+    # resetăm tabla pentru nivelul următor (configurabil dacă doriți păstrarea scorului)
+    grid = [[0] * GRID_SIZE for _ in range(GRID_SIZE)]
+    score = 0
+    moves = 0
+    game_over = False
+    # spawn două piese de start
+    spawn_tile(grid)
+    spawn_tile(grid)
+
 # main loop
 while running:
     moved_this_frame = False
@@ -219,10 +244,28 @@ while running:
     if moved_this_frame:
         moves += 1
         spawn_tile(grid)
+
+ # verificare nivel: dacă există un tile >= țintă pentru nivelul curent, trecem la nivelul următor
+        target = LEVEL_TARGETS.get(current_level)
+        if target is not None:
+            found = False
+            for r in range(GRID_SIZE):
+                for c in range(GRID_SIZE):
+                    if grid[r][c] >= target:
+                        found = True
+                        break
+                if found:
+                    break
+            if found:
+                next_level()
+                # după next_level am resetat tabla și mutările; sar peste verificarea can_move în acest cadru
+        
         if not can_move(grid):
             game_over = True
             if score > high_score:
                 high_score = score
+    
+
 
     # draw background
     screen.fill(BACKGROUND_COLOR)
@@ -252,9 +295,7 @@ while running:
                 rect = surf.get_rect(center=tile_rect.center)
                 screen.blit(surf, rect)
 
-    # UI Controls text
-    controls_surface = font_small.render('Controls: Arrow Keys to Move, R to Restart, Q to Quit', True, BLACK)
-    screen.blit(controls_surface, (50, 485))
+
 
     # move, score, level, high score
     move_surface = font_med.render(f'Move: {moves}', True, WHITE)
@@ -268,6 +309,9 @@ while running:
 
     high_score_surface = font_med.render(f'High Score: {high_score}', True, WHITE)
     screen.blit(high_score_surface, (20, 40))
+
+    level_surface = font_med.render(f'Level: {current_level}', True, WHITE)
+    screen.blit(level_surface, (20, 80))
 
     # game over overlay
     if game_over:
