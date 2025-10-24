@@ -3,7 +3,7 @@ import random
 import pygame
 from copy import deepcopy
 
-# game setup
+# initializare pygame
 pygame.init()
 pygame.font.init()
 screen = pygame.display.set_mode((400, 500))
@@ -13,7 +13,7 @@ running = True
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-#intro screen
+#ecran intro
 intro_font = pygame.font.SysFont(None, 30, bold=True)
 intro_text = intro_font.render('Press any key to start', True, (255, 255, 255))
 intro_image = pygame.image.load(os.path.join(BASE_DIR, "intro_bck.png"))
@@ -32,7 +32,7 @@ while show_intro:
             show_intro = False
 
 
-# colors
+# culori
 BACKGROUND_COLOR = (187, 173, 160)
 background_img = pygame.image.load(os.path.join(BASE_DIR, "fundal_joc.png"))
 background_img = pygame.transform.scale(background_img, (400, 500))
@@ -63,7 +63,7 @@ GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 YELLOW = (255, 255, 0)
 
-# game state
+# status joc
 GRID_SIZE = 4
 grid = [[0] * GRID_SIZE for _ in range(GRID_SIZE)]
 score = 0
@@ -85,14 +85,26 @@ LEVEL_TARGETS = {
 level_message_until = 0            # timestamp în ms până când se afișează mesajul
 LEVEL_MESSAGE_DURATION_MS = 1500   # durată afișare mesaj în ms
 
-# fonts
+# fonturi
 font_small = pygame.font.SysFont(None, 18)
 font_med = pygame.font.SysFont(None, 25)
 font_big = pygame.font.SysFont(None, 40)
+font_music = pygame.font.SysFont(None, 15)  # font special pentru muzică
 
-#music
-pygame.mixer.init
+#muzica de fundal
+pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+background_music = pygame.mixer.music.load(os.path.join(BASE_DIR, "hypnotic_jewels.ogg"))
+pygame.mixer.music.set_volume(0.5)  # volum la 50%
+pygame.mixer.music.play(-1)  # -1 înseamnă loop infinit
+music_playing = True
 
+def toggle_music():
+    global music_playing
+    if music_playing:
+        pygame.mixer.music.pause()
+    else:
+        pygame.mixer.music.unpause()
+    music_playing = not music_playing
 
 def spawn_tile(board):
     empties = [(r, c) for r in range(GRID_SIZE) for c in range(GRID_SIZE) if board[r][c] == 0]
@@ -195,7 +207,7 @@ def new_level():
     spawn_tile(grid)
 
 
-# initialize
+# initializare joc
 restart()
 if high_score < score:
     high_score = score
@@ -237,6 +249,8 @@ while running:
                 running = False
             elif event.key == pygame.K_r:
                 restart()
+            elif event.key == pygame.K_m: #se comuta muzica din tasta 'm'
+                toggle_music()
             elif event.key == pygame.K_UP:
                 new_grid, moved = move_up(grid)
                 if moved:
@@ -287,11 +301,11 @@ while running:
     
 
 
-  # draw background
+  # fundal
     screen.fill(BACKGROUND_COLOR)
     screen.blit(background_img, (0, 0))
 
-    # board background (folosim 360x360 ca zonă)
+    # fundal tabla (folosim 360x360 ca zonă)
     board_x, board_y = 20, 120
     board_size = 360
     pygame.draw.rect(screen, WHITE, (board_x, board_y, board_size, board_size), border_radius=10)
@@ -301,7 +315,7 @@ while running:
     total_padding = padding * (GRID_SIZE + 1)
     cell_size = max(10, (board_size - total_padding) // GRID_SIZE)
 
-    # draw grid tiles (dinamic)
+    # deseneaza patratelele (dinamic)
     for r in range(GRID_SIZE):
         for c in range(GRID_SIZE):
             val = grid[r][c]
@@ -334,9 +348,14 @@ while running:
     screen.blit(level_surface, (20, 80))
 
     high_score_surface = font_med.render(f'High Score: {high_score}', True, WHITE)
-    screen.blit(high_score_surface, (20, 40))
+    screen.blit(high_score_surface, (20, 10))
 
-    # afișare mesaj tranzitoriu "Level n"
+    # indicator muzică
+    music_text = "Music: ON" if music_playing else "Music: OFF"
+    music_surface = font_music.render(f'{music_text} (M)', True, WHITE)
+    screen.blit(music_surface, (300, 10))  #pozitia pentru textul muzica
+
+    # afișare mesaj tranzitoriu
     if pygame.time.get_ticks() < level_message_until:
         overlay = pygame.Surface((360, 80), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
