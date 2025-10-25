@@ -56,12 +56,7 @@ TILE_COLORS = {
 }
 
 
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
-YELLOW = (255, 255, 0)
+WHITE, BLACK = (255, 255, 255), (0, 0, 0)
 
 # status joc
 GRID_SIZE = 4
@@ -116,21 +111,9 @@ def spawn_tile(board):
 
 
 def can_move(board):
-    # if any empty exist -> can move
-    for r in range(GRID_SIZE):
-        for c in range(GRID_SIZE):
-            if board[r][c] == 0:
-                return True
-    # check merges horizontally and vertically
-    for r in range(GRID_SIZE):
-        for c in range(GRID_SIZE - 1):
-            if board[r][c] == board[r][c + 1]:
-                return True
-    for c in range(GRID_SIZE):
-        for r in range(GRID_SIZE - 1):
-            if board[r][c] == board[r + 1][c]:
-                return True
-    return False
+    return (any(board[r][c] == 0 for r in range(GRID_SIZE) for c in range(GRID_SIZE)) or
+            any(board[r][c] == board[r][c+1] for r in range(GRID_SIZE) for c in range(GRID_SIZE-1)) or
+            any(board[r][c] == board[r+1][c] for c in range(GRID_SIZE) for r in range(GRID_SIZE-1)))
 
 
 def compress_row_left(row):
@@ -190,18 +173,7 @@ def move_down(board):
 def restart():
     global grid, score, moves, game_over
     grid = [[0] * GRID_SIZE for _ in range(GRID_SIZE)]
-    score = 0
-    moves = 0
-    game_over = False
-    spawn_tile(grid)
-    spawn_tile(grid)
-
-
-def new_level():
-    global grid, score, moves, game_over
-    grid = [[0] * GRID_SIZE for _ in range(GRID_SIZE)]
-    score = 0
-    moves = 0
+    score = moves = 0
     game_over = False
     spawn_tile(grid)
     spawn_tile(grid)
@@ -209,33 +181,17 @@ def new_level():
 
 # initializare joc
 restart()
-if high_score < score:
-    high_score = score
 
 def next_level():
-    global grid, score, moves, game_over, current_level, GRID_SIZE, level_message_until
-    # avansăm nivelul
+    global grid, game_over, current_level, GRID_SIZE, level_message_until
     current_level += 1
-
-    # creștem dimensiunea tablei (ex: +1 la GRID_SIZE)
-    new_size = GRID_SIZE + 1
-    # limitați dacă doriți (opțional), ex: new_size = min(new_size, 8)
-    GRID_SIZE = new_size
-
-    # creăm o tablă nouă și copiem vechile valori (în colțul stânga-sus)
+    GRID_SIZE += 1
     new_grid = [[0] * GRID_SIZE for _ in range(GRID_SIZE)]
     for r in range(len(grid)):
         for c in range(len(grid[r])):
             new_grid[r][c] = grid[r][c]
-    grid = new_grid
-
-    # nu resetez score/moves — păstrează progresul
-    game_over = False
-
-    # optional: adaugăm un tile suplimentar pentru spațiul nou
+    grid, game_over = new_grid, False
     spawn_tile(grid)
-
-    # afișăm mesajul de nivel pentru o perioadă scurtă
     level_message_until = pygame.time.get_ticks() + LEVEL_MESSAGE_DURATION_MS
 
 # main loop
@@ -249,28 +205,15 @@ while running:
                 running = False
             elif event.key == pygame.K_r:
                 restart()
-            elif event.key == pygame.K_m: #se comuta muzica din tasta 'm'
+            elif event.key == pygame.K_m:
                 toggle_music()
-            elif event.key == pygame.K_UP:
-                new_grid, moved = move_up(grid)
-                if moved:
-                    grid = new_grid
-                    moved_this_frame = True
-            elif event.key == pygame.K_DOWN:
-                new_grid, moved = move_down(grid)
-                if moved:
-                    grid = new_grid
-                    moved_this_frame = True
-            elif event.key == pygame.K_LEFT:
-                new_grid, moved = move_left(grid)
-                if moved:
-                    grid = new_grid
-                    moved_this_frame = True
-            elif event.key == pygame.K_RIGHT:
-                new_grid, moved = move_right(grid)
-                if moved:
-                    grid = new_grid
-                    moved_this_frame = True
+            else:
+                moves_dict = {pygame.K_UP: move_up, pygame.K_DOWN: move_down, 
+                             pygame.K_LEFT: move_left, pygame.K_RIGHT: move_right}
+                if event.key in moves_dict:
+                    new_grid, moved = moves_dict[event.key](grid)
+                    if moved:
+                        grid, moved_this_frame = new_grid, True
         elif event.type == pygame.KEYDOWN and game_over:
             if event.key == pygame.K_r:
                 restart()
@@ -278,26 +221,16 @@ while running:
     if moved_this_frame:
         moves += 1
         spawn_tile(grid)
-
- # verificare nivel: dacă există un tile >= țintă pentru nivelul curent, trecem la nivelul următor
+        # verificare nivel
         target = LEVEL_TARGETS.get(current_level)
-        if target is not None:
-            found = False
-            for r in range(GRID_SIZE):
-                for c in range(GRID_SIZE):
-                    if grid[r][c] >= target:
-                        found = True
-                        break
-                if found:
-                    break
-            if found:
-                next_level()
-                # după next_level am resetat tabla și mutările; sar peste verificarea can_move în acest cadru
-        
-        if not can_move(grid):
-            game_over = True
-            if score > high_score:
-                high_score = score
+        if target and any(grid[r][c] >= target for r in range(GRID_SIZE) for c in range(GRID_SIZE)):
+            next_level()
+    
+    # verificare game over
+    if not can_move(grid):
+        game_over = True
+        if score > high_score:
+            high_score = score
     
 
 
@@ -315,62 +248,45 @@ while running:
     total_padding = padding * (GRID_SIZE + 1)
     cell_size = max(10, (board_size - total_padding) // GRID_SIZE)
 
-    # deseneaza patratelele (dinamic)
+    # deseneaza patratelele
     for r in range(GRID_SIZE):
         for c in range(GRID_SIZE):
             val = grid[r][c]
-            x = board_x + padding + c * (cell_size + padding)
-            y = board_y + padding + r * (cell_size + padding)
+            x, y = board_x + padding + c * (cell_size + padding), board_y + padding + r * (cell_size + padding)
             tile_rect = pygame.Rect(x, y, cell_size, cell_size)
-            color = TILE_COLORS.get(val, EMPTY_COLOR) if val != 0 else EMPTY_COLOR
-            pygame.draw.rect(screen, color, tile_rect, border_radius=5)
-            if val != 0:
-                # choose text color depending on tile
-                txt_color = WHITE
-                txt = str(val)
-                # alege dimensiune font proporțională cu cell_size
-                # simplu: scădem cu numărul de cifre
-                digit_count = len(txt)
-                font_size = max(12, int(cell_size * 0.6) - (digit_count - 1) * 4)
-                font_tile = pygame.font.SysFont(None, font_size, bold=True)
-                surf = font_tile.render(txt, True, txt_color)
-                rect = surf.get_rect(center=tile_rect.center)
-                screen.blit(surf, rect)
+            pygame.draw.rect(screen, TILE_COLORS.get(val, EMPTY_COLOR), tile_rect, border_radius=5)
+            if val:
+                font_size = max(12, int(cell_size * 0.6) - (len(str(val)) - 1) * 4)
+                surf = pygame.font.SysFont(None, font_size, bold=True).render(str(val), True, WHITE)
+                screen.blit(surf, surf.get_rect(center=tile_rect.center))
 
-    # move, score, level, high score
-    move_surface = font_med.render(f'Move: {moves}', True, WHITE)
-    screen.blit(move_surface, (300, 40))
+    # UI text
+    texts = [
+        (f'High Score: {high_score}', (20, 10)),
+        (f'Level: {current_level}', (20, 80)),
+        (f'Move: {moves}', (300, 40)),
+        (f'Score: {score}', (300, 80)),
+        (f'Music: {"ON" if music_playing else "OFF"} (M)', (300, 10))
+    ]
+    for text, pos in texts:
+        font = font_music if 'Music' in text else font_med
+        screen.blit(font.render(text, True, WHITE), pos)
 
-    score_surface = font_med.render(f'Score: {score}', True, WHITE)
-    screen.blit(score_surface, (300, 80))
-
-    level_surface = font_med.render(f'Level: {current_level}', True, WHITE)
-    screen.blit(level_surface, (20, 80))
-
-    high_score_surface = font_med.render(f'High Score: {high_score}', True, WHITE)
-    screen.blit(high_score_surface, (20, 10))
-
-    # indicator muzică
-    music_text = "Music: ON" if music_playing else "Music: OFF"
-    music_surface = font_music.render(f'{music_text} (M)', True, WHITE)
-    screen.blit(music_surface, (300, 10))  #pozitia pentru textul muzica
-
-    # afișare mesaj tranzitoriu
+    # overlays
     if pygame.time.get_ticks() < level_message_until:
         overlay = pygame.Surface((360, 80), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         msg = font_big.render(f'Level {current_level}', True, WHITE)
-        screen.blit(overlay, (20, 180 - 40))  # deasupra tablei
-        screen.blit(msg, (20 + (360 - msg.get_width()) // 2, 180 - 40 + (80 - msg.get_height()) // 2))
-    # game over overlay
+        screen.blit(overlay, (20, 140))
+        screen.blit(msg, (20 + (360 - msg.get_width()) // 2, 140 + (80 - msg.get_height()) // 2))
     if game_over:
         overlay = pygame.Surface((360, 360), pygame.SRCALPHA)
         overlay.fill((255, 255, 255, 180))
         screen.blit(overlay, (20, 120))
-        go_surf = font_big.render('Game Over!', True, BLACK)
-        screen.blit(go_surf, (400//2 - go_surf.get_width()//2, 230))
-        sub_surf = font_med.render('Press R to Restart', True, BLACK)
-        screen.blit(sub_surf, (400//2 - sub_surf.get_width()//2, 280))
+        for text, y in [('Game Over!', 230), ('Press R to Restart', 280)]:
+            font = font_big if 'Game' in text else font_med
+            surf = font.render(text, True, BLACK)
+            screen.blit(surf, (200 - surf.get_width()//2, y))
 
     # update display
     pygame.display.flip()
