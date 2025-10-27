@@ -1,13 +1,12 @@
 # PROIECT JOC 2048
 
-AVEM:
-INTRO(INCA IN LUCRU)
-MUZICA
-NIVELE (VARIANT IN LUCRU)
-SISTEM DE SCORE SI HIGH SCORE
-JOC DE BAZA
+Avem:
+- intro(inca in lucru)
+- muzica
+- nivele (variante in lucru)
+- sistem de score si high score
+- joc de baza
 
-MODIFICARI ULTERIOARE:
-GRAFICI NOI PENTRU JOC
-IMPLEMENTARE MENIU (AJUSTARE VOLUM, SI ALTELE)
-BUTON DE UNDO (POATE)
+modificari ulterioare:
+grafici noi pentru joc
+implementare meniu 
