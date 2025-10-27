@@ -13,23 +13,98 @@ running = True
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-#ecran intro
-intro_font = pygame.font.SysFont(None, 30, bold=True)
-intro_text = intro_font.render('Press any key to start', True, (255, 255, 255))
+intro_font = pygame.font.SysFont(None, 40, bold=True)
+font_small = pygame.font.SysFont(None, 18)
+font_med = pygame.font.SysFont(None, 25)
+font_big = pygame.font.SysFont(None, 40)
+font_music = pygame.font.SysFont(None, 15)  # font special pentru muzică
+
 intro_image = pygame.image.load(os.path.join(BASE_DIR, "intro_bck.png"))
 intro_image = pygame.transform.scale(intro_image, (400, 500))
+
+def draw_button(surf, rect, text, font, bg=(50,50,50), fg=(0,0,0)):
+    pygame.draw.rect(surf, bg, rect, border_radius=8)
+    txt = font.render(text, True, fg)
+    surf.blit(txt, txt.get_rect(center=rect.center))
+
+intro_state = 'main'   # 'main', 'menu', 'credits'
 show_intro = True
+# button layout
+btn_w, btn_h = 200, 40
+btn_x = (400 - btn_w) // 2
+btn_start_y = 200
+btn_gap = 20
+btn_play = pygame.Rect(btn_x, btn_start_y, btn_w, btn_h)
+btn_menu = pygame.Rect(btn_x, btn_start_y + (btn_h + btn_gap), btn_w, btn_h)
+btn_credits = pygame.Rect(btn_x, btn_start_y + 2*(btn_h + btn_gap), btn_w, btn_h)
+back_btn = pygame.Rect(20, 440, 80, 30)
+
 while show_intro:
-    screen.fill((255, 255, 255))
-    screen.blit(intro_image, (0, 0))
-    screen.blit(intro_text, (100, 450))
-    pygame.display.update()
+    screen.fill((0,0,0))
+    screen.blit(intro_image, (0,0))
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             exit()
         if event.type == pygame.KEYDOWN:
-            show_intro = False
+            if intro_state == 'main':
+                # any key starts game (same as Play)
+                show_intro = False
+            else:
+                # in menu / credits any key returns to main intro
+                intro_state = 'main'
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            if intro_state == 'main':
+                if btn_play.collidepoint((mx,my)):
+                    show_intro = False
+                elif btn_menu.collidepoint((mx,my)):
+                    intro_state = 'menu'
+                elif btn_credits.collidepoint((mx,my)):
+                    intro_state = 'credits'
+            else:
+                # if in submenu, allow back button click
+                if back_btn.collidepoint((mx,my)):
+                    intro_state = 'main'
+
+
+    if intro_state == 'main':
+        # draw three main buttons
+        draw_button(screen, btn_play, "Play", intro_font, bg=(130, 255, 100))
+        draw_button(screen, btn_menu, "Menu", intro_font, bg=(255, 100, 100))
+        draw_button(screen, btn_credits, "Credits", intro_font, bg=(130,30,90))
+        hint = font_small.render('Press any key to start or click Play', True, (255,255,255))
+        screen.blit(hint, (20, 460))
+    elif intro_state == 'menu':
+        # placeholder for future options
+        overlay = pygame.Surface((360,300), pygame.SRCALPHA)
+        overlay.fill((0,0,0,200))
+        screen.blit(overlay, (20,100))
+        hdr = font_big.render('Menu', True, (255, 255, 255))
+        screen.blit(hdr, (200 - hdr.get_width()//2, 160))
+        info = font_med.render('Aici vor fi optiuni de setari.', True, (200,200,200))
+        screen.blit(info, (200 - info.get_width()//2, 210))
+        draw_button(screen, back_btn, "Back", font_small, bg=(70,70,70))
+    elif intro_state == 'credits':
+        overlay = pygame.Surface((360,300), pygame.SRCALPHA)
+        overlay.fill((0,0,0,200))
+        screen.blit(overlay, (20,100))
+        hdr = font_big.render('Credits', True, (255,255,255))
+        screen.blit(hdr, (200 - hdr.get_width()//2, 140))
+        lines = [
+            "Creatori:",
+            "Cănuță Andrei, Ciufu Andrei Laurențiu",
+            "Muzică: 'Hypnotic Jewels'",
+            "by Eric Matyas soundimage.org"
+        ]
+        for i, ln in enumerate(lines):
+            surf = font_med.render(ln, True, (220,220,220))
+            screen.blit(surf, (200 - surf.get_width()//2, 190 + i*30))
+        draw_button(screen, back_btn, "Back", font_small, bg=(70,70,70))
+
+    pygame.display.update()
+    clock.tick(30)
 
 
 # culori
@@ -76,9 +151,10 @@ LEVEL_TARGETS = {
     5: 8192
 }
 
-# mesaj pentru schimbare nivel
-level_message_until = 0            # timestamp în ms până când se afișează mesajul
-LEVEL_MESSAGE_DURATION_MS = 1500   # durată afișare mesaj în ms
+# durata în milisecunde pentru mesajul de schimbare nivel (ex: 2000ms = 2s)
+LEVEL_MESSAGE_DURATION_MS = 2000
+# timestamp până la care se afișează mesajul de nivel; inițial 0 pentru a evita NameError
+level_message_until = 0
 
 # fonturi
 font_small = pygame.font.SysFont(None, 18)
