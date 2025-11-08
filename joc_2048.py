@@ -1,10 +1,10 @@
 import os
 import random
 import pygame
-from copy import deepcopy
 
 # initializare pygame
 pygame.init()
+volum = 0.5
 pygame.font.init()
 screen = pygame.display.set_mode((400, 500))
 pygame.display.set_caption("Joc 2048")
@@ -38,6 +38,17 @@ btn_play = pygame.Rect(btn_x, btn_start_y, btn_w, btn_h)
 btn_menu = pygame.Rect(btn_x, btn_start_y + (btn_h + btn_gap), btn_w, btn_h)
 btn_credits = pygame.Rect(btn_x, btn_start_y + 2*(btn_h + btn_gap), btn_w, btn_h)
 back_btn = pygame.Rect(20, 440, 80, 30)
+
+#setare volum joc
+pygame.mixer.init()
+pygame.mixer.music.load(os.path.join(BASE_DIR, "hypnotic_jewels.ogg"))
+pygame.mixer.music.set_volume(volum)
+pygame.mixer.music.play(-1)
+buton_activ = False
+slider_x, slider_y = 100, 300
+slider_lungime = 200
+buton_radius = 10
+
 
 while show_intro:
     screen.fill((0,0,0))
@@ -77,15 +88,37 @@ while show_intro:
         hint = font_small.render('Press any key to start or click Play', True, (255,255,255))
         screen.blit(hint, (20, 460))
     elif intro_state == 'menu':
-        # placeholder for future options
-        overlay = pygame.Surface((360,300), pygame.SRCALPHA)
-        overlay.fill((0,0,0,200))
-        screen.blit(overlay, (20,100))
-        hdr = font_big.render('Menu', True, (255, 255, 255))
-        screen.blit(hdr, (200 - hdr.get_width()//2, 160))
-        info = font_med.render('Aici vor fi optiuni de setari.', True, (200,200,200))
-        screen.blit(info, (200 - info.get_width()//2, 210))
-        draw_button(screen, back_btn, "Back", font_small, bg=(70,70,70))
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                if slider_x <= mx <= slider_x + slider_lungime and abs(my - slider_y) < 20:
+                    buton_activ = True
+            elif event.type == pygame.MOUSEBUTTONUP:
+                buton_activ = False
+            elif event.type == pygame.MOUSEMOTION and buton_activ:
+                mx, my = event.pos
+                volum = max(0, min(1, (mx - slider_x) / slider_lungime))
+                pygame.mixer.music.set_volume(volum)
+
+
+
+            # placeholder for future options
+            overlay = pygame.Surface((360,300), pygame.SRCALPHA)
+            overlay.fill((0,0,0,200))
+            screen.blit(overlay, (20,100))
+            hdr = font_big.render('Menu', True, (255, 255, 255))
+            screen.blit(hdr, (200 - hdr.get_width()//2, 160))
+            info = font_med.render('Aici vor fi optiuni de setari.', True, (200,200,200))
+            screen.blit(info, (200 - info.get_width()//2, 210))
+            draw_button(screen, back_btn, "Back", font_small, bg=(70,70,70))
+    
+            # Bara volum
+            pygame.draw.line(screen, (180,180,180), (slider_x, slider_y), (slider_x + slider_lungime, slider_y), 4)
+            poz_buton = slider_x + int(volum * slider_lungime)
+            pygame.draw.circle(screen, (255,100,100), (poz_buton, slider_y), buton_radius)
+            label = font_small.render(f"Volum: {int(volum*100)}%", True, (255,255,255))
+            screen.blit(label, (200 - label.get_width()//2, slider_y + 20))
+
+
     elif intro_state == 'credits':
         overlay = pygame.Surface((360,300), pygame.SRCALPHA)
         overlay.fill((0,0,0,200))
@@ -145,14 +178,15 @@ game_over = False
 current_level = 1
 LEVEL_TARGETS = {
     1: 128,
-    2: 1024,
-    3: 2048,
-    4: 4096,
-    5: 8192
+    2: 512,
+    3: 1024,
+    4: 2048,
+    5: 4096,
+    6: 8192
 }
 
 # durata în milisecunde pentru mesajul de schimbare nivel (ex: 2000ms = 2s)
-LEVEL_MESSAGE_DURATION_MS = 2000
+LEVEL_MESSAGE_DURATION_MS = 3000
 # timestamp până la care se afișează mesajul de nivel; inițial 0 pentru a evita NameError
 level_message_until = 0
 
@@ -162,12 +196,34 @@ font_med = pygame.font.SysFont(None, 25)
 font_big = pygame.font.SysFont(None, 40)
 font_music = pygame.font.SysFont(None, 15)  # font special pentru muzică
 
-#muzica de fundal
+#initializare mixer pentru sunet
 pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+
+#pop block sound
+pop_sound = pygame.mixer.Sound(os.path.join(BASE_DIR, "pop_block_fx.wav"))
+pop_sound.set_volume(0.6)
+
+#level up sound
+lvl_up_sound = pygame.mixer.Sound(os.path.join(BASE_DIR, "level_up_fx.wav"))
+lvl_up_sound.set_volume(0.6)
+
+#game over sound
+game_over_sound = pygame.mixer.Sound(os.path.join(BASE_DIR, "game_over_fx.wav"))
+game_over_sound.set_volume(0.6)
+
+
+#muzica de fundal
 background_music = pygame.mixer.music.load(os.path.join(BASE_DIR, "hypnotic_jewels.ogg"))
 pygame.mixer.music.set_volume(0.5)  # volum la 50%
 pygame.mixer.music.play(-1)  # -1 înseamnă loop infinit
 music_playing = True
+
+
+
+# Variabile slider
+slider_x, slider_y = 100, 150
+slider_lungime = 200
+buton_radius = 10
 
 def toggle_music():
     global music_playing
@@ -209,6 +265,7 @@ def merge_row_left(row):
             row[i + 1] = 0
             merged[i] = True
             score += 1
+            pop_sound.play()
     return compress_row_left(row)
 
 
@@ -268,6 +325,7 @@ def next_level():
             new_grid[r][c] = grid[r][c]
     grid, game_over = new_grid, False
     spawn_tile(grid)
+    lvl_up_sound.play()
     level_message_until = pygame.time.get_ticks() + LEVEL_MESSAGE_DURATION_MS
 
 # main loop
@@ -294,6 +352,7 @@ while running:
             if event.key == pygame.K_r:
                 restart()
 
+
     if moved_this_frame:
         moves += 1
         spawn_tile(grid)
@@ -303,13 +362,14 @@ while running:
             next_level()
     
     # verificare game over
-    if not can_move(grid):
+    if not can_move(grid) and not game_over:
         game_over = True
+        game_over_sound.play()
+        music_playing = False
         if score > high_score:
             high_score = score
+
     
-
-
   # fundal
     screen.fill(BACKGROUND_COLOR)
     screen.blit(background_img, (0, 0))
@@ -347,6 +407,7 @@ while running:
     for text, pos in texts:
         font = font_music if 'Music' in text else font_med
         screen.blit(font.render(text, True, WHITE), pos)
+
 
     # overlays
     if pygame.time.get_ticks() < level_message_until:
