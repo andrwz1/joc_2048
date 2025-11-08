@@ -178,11 +178,10 @@ game_over = False
 current_level = 1
 LEVEL_TARGETS = {
     1: 128,
-    2: 512,
-    3: 1024,
-    4: 2048,
-    5: 4096,
-    6: 8192
+    2: 1024,
+    3: 2048,
+    4: 4096,
+    5: 8192
 }
 
 # durata în milisecunde pentru mesajul de schimbare nivel (ex: 2000ms = 2s)
