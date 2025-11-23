@@ -1,9 +1,5 @@
-# joc_2048.py
-# Versiune corectată: bara de volum apare doar în ecranul MENU,
-# butonul Difficulty este în MENU și funcțional (poți schimba dificultatea și reveni la meniu).
-# Spawn logic: Easy / Medium / Hard (hard = mai agresiv + obstacole ocazionale).
-
 import os
+import sys
 import random
 import pygame
 import math
@@ -17,7 +13,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Fereastra
 WIDTH, HEIGHT = 400, 500
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Joc 2048")
+pygame.display.set_caption("2048 GAME")
 clock = pygame.time.Clock()
 FPS = 60
 
@@ -31,11 +27,22 @@ font_med = pygame.font.SysFont(None, 25)
 font_big = pygame.font.SysFont(None, 40)
 font_music = pygame.font.SysFont(None, 15)
 
+
 # imagini
-intro_image = pygame.image.load(os.path.join(BASE_DIR, "intro_bck.png"))
+intro_image = pygame.image.load(os.path.join(BASE_DIR, "intro_back.png"))
 intro_image = pygame.transform.scale(intro_image, (WIDTH, HEIGHT))
 background_img = pygame.image.load(os.path.join(BASE_DIR, "fundal_joc.png"))
 background_img = pygame.transform.scale(background_img, (WIDTH, HEIGHT))
+
+# optional obstacle image (place `obstacle.png` in project root)
+obstacle_img = None
+obstacle_img_cache = {}
+try:
+    obst_path = os.path.join(BASE_DIR, "obstacle.png")
+    if os.path.exists(obst_path):
+        obstacle_img = pygame.image.load(obst_path).convert_alpha()
+except Exception:
+    obstacle_img = None
 
 # culori / tile colors
 BACKGROUND_COLOR = (187, 173, 160)
@@ -90,7 +97,6 @@ btn_menu = pygame.Rect(btn_x, btn_start_y + (btn_h + btn_gap), btn_w, btn_h)
 btn_credits = pygame.Rect(btn_x, btn_start_y + 2*(btn_h + btn_gap), btn_w, btn_h)
 # Difficulty button should be visible in MENU (not in main)
 btn_difficulty = pygame.Rect(btn_x, btn_start_y + 2.5*(btn_h + btn_gap), btn_w, btn_h)
-back_btn = pygame.Rect(20, 440, 80, 30)
 
 # slider variables used only in MENU
 buton_activ = False
@@ -121,6 +127,9 @@ music_playing = True
 
 # difficulty
 selected_difficulty = "easy"  # default: easy / medium / hard
+
+# confirm exit from game -> back to menu
+show_exit_confirm = False
 
 # -------------------- Spawn logic per difficulty --------------------
 def spawn_tile(board, prefer_four=False):
@@ -280,15 +289,28 @@ def move_down(board):
 
 # -------------------- Restart / level --------------------
 def restart():
-    global grid, score, moves, game_over, current_level, GRID_SIZE
+    global grid, score, moves, game_over, current_level, GRID_SIZE, music_playing
     GRID_SIZE = 4
     current_level = 1
     grid = [[0] * GRID_SIZE for _ in range(GRID_SIZE)]
     score = 0
     moves = 0
     game_over = False
+
+    # asigurăm că muzica e rulată și flag-ul e corect
+    # încercăm unpause, dar dacă nu e nimic redat, pornim play(-1)
+    try:
+        pygame.mixer.music.unpause()
+    except Exception:
+        pass
+    if not pygame.mixer.music.get_busy():
+        pygame.mixer.music.play(-1)
+    music_playing = True
+
+    # spawn inițial
     spawn_tile(grid)
     spawn_tile(grid)
+
 
 def next_level():
     global grid, game_over, current_level, GRID_SIZE, level_message_until
@@ -322,7 +344,37 @@ def draw_board(board):
             tile_rect = pygame.Rect(x, y, cell_size, cell_size)
             if val == -1:
                 pygame.draw.rect(screen, OBSTACLE_COLOR, tile_rect, border_radius=5)
-                surf = font_small.render("nigga", True, WHITE)
+                # If an obstacle image was provided, draw it (cached to avoid repeated scaling).
+                if obstacle_img is not None:
+                    size = max(10, cell_size - 6)
+                    if size not in obstacle_img_cache:
+                        try:
+                            obstacle_img_cache[size] = pygame.transform.smoothscale(obstacle_img, (size, size))
+                        except Exception:
+                            obstacle_img_cache[size] = obstacle_img
+                    img_surf = obstacle_img_cache[size]
+                    screen.blit(img_surf, img_surf.get_rect(center=tile_rect.center))
+                    continue
+
+                # Fallback: try to render emoji with the special font; many color emoji fonts produce zero-width surfaces
+                # so we fallback to system emoji font or a simple text fallback
+                try:
+                    surf = font_small.render(".", True, WHITE)
+                    if surf.get_width() == 0:
+                        raise Exception("zero-width emoji surface")
+                except Exception:
+                    surf = None
+                    # try a system emoji-capable font (Windows: "Segoe UI Emoji")
+                    try:
+                        sys_emoji = pygame.font.SysFont("Segoe UI Emoji", max(12, int(cell_size * 0.8)))
+                        tmp = sys_emoji.render("", True, WHITE)
+                        if tmp.get_width() > 0:
+                            surf = tmp
+                    except Exception:
+                        surf = None
+                    # final fallback: simple monochrome glyph
+                    if surf is None or surf.get_width() == 0:
+                        surf = font_med.render(":-)", True, WHITE)
                 screen.blit(surf, surf.get_rect(center=tile_rect.center))
                 continue
             color = TILE_COLORS.get(val, EMPTY_COLOR)
@@ -335,6 +387,7 @@ def draw_board(board):
 
 # -------------------- Intro/Menu flow --------------------
 intro_state = 'main'   # 'main', 'menu', 'credits', 'difficulty'
+intro_prev_state = 'main'
 show_intro = True
 
 restart()
@@ -349,29 +402,40 @@ while running:
             if event.type == pygame.QUIT:
                 pygame.quit()
                 raise SystemExit
+
             if event.type == pygame.KEYDOWN:
-                if intro_state == 'main':
-                    show_intro = False
+                if event.key == pygame.K_ESCAPE:
+                    if intro_state != 'main':
+                        intro_state = intro_prev_state or 'main'
+                        intro_prev_state = 'main'
+                    else:
+                        # optionally ignore or keep on main
+                        pass
                 else:
-                    intro_state = 'main'
+                    # orice altă tastă pornește jocul din main sau întoarce la main din sub-ecrane
+                    if intro_state == 'main':
+                        show_intro = False
+                    else:
+                        intro_state = 'main'
+
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
                 if intro_state == 'main':
                     if btn_play.collidepoint((mx,my)):
                         show_intro = False
                     elif btn_menu.collidepoint((mx,my)):
+                        intro_prev_state = intro_state
                         intro_state = 'menu'
                     elif btn_credits.collidepoint((mx,my)):
+                        intro_prev_state = intro_state
                         intro_state = 'credits'
                 elif intro_state == 'menu':
                     if btn_difficulty.collidepoint((mx,my)):
+                        intro_prev_state = intro_state
                         intro_state = 'difficulty'
                 elif intro_state == 'difficulty':
-                    # clicks in difficulty screen are handled below with rect checks
+                    # clicks in difficulty handled below (mouse polling)
                     pass
-                else:
-                    if back_btn.collidepoint((mx,my)):
-                        intro_state = 'main'
 
             # slider in menu (mouse down handled above; here we only track mouse motion)
             if intro_state == 'menu':
@@ -403,9 +467,9 @@ while running:
             screen.blit(overlay, (20,100))
             hdr = font_big.render('Menu', True, (255,255,255))
             screen.blit(hdr, (200 - hdr.get_width()//2, 160))
-            info = font_med.render('Setări', True, (200,200,200))
+            info = font_med.render('Settings', True, (200,200,200))
             screen.blit(info, (200 - info.get_width()//2, 210))
-            draw_button(screen, back_btn, "Back", font_small, bg=(70,70,70))
+            # draw_button(screen, back_btn, "Back", font_small, bg=(70,70,70))  # removed
 
             # difficulty button inside MENU (user asked specifically)
             draw_button(screen, btn_difficulty, "Difficulty", font_med, bg=(90,150,255))
@@ -414,7 +478,7 @@ while running:
             pygame.draw.line(screen, (180,180,180), (menu_slider_x, menu_slider_y), (menu_slider_x + menu_slider_len, menu_slider_y), 4)
             pos = menu_slider_x + int(volum * menu_slider_len)
             pygame.draw.circle(screen, (255,100,100), (pos, menu_slider_y), buton_radius)
-            label = font_small.render(f"Volum: {int(volum*100)}%", True, (255,255,255))
+            label = font_small.render(f"Volume: {int(volum*100)}%", True, (255,255,255))
             screen.blit(label, (200 - label.get_width()//2, menu_slider_y + 20))
 
             # show current difficulty
@@ -425,7 +489,7 @@ while running:
             overlay = pygame.Surface((360,300), pygame.SRCALPHA)
             overlay.fill((0,0,0,200))
             screen.blit(overlay, (20,100))
-            hdr = font_big.render('Alege dificultatea', True, (255,255,255))
+            hdr = font_big.render('Choose difficulty', True, (255,255,255))
             screen.blit(hdr, (200 - hdr.get_width()//2, 130))
 
             btn_easy = pygame.Rect(100, 180, 200, 40)
@@ -434,25 +498,25 @@ while running:
             draw_button(screen, btn_easy, "Easy", font_med, bg=(80,200,80))
             draw_button(screen, btn_medium, "Medium", font_med, bg=(200,200,80))
             draw_button(screen, btn_hard, "Hard", font_med, bg=(200,80,80))
-            draw_button(screen, back_btn, "Back", font_small, bg=(70,70,70))
+            # draw_button(screen, back_btn, "Back", font_small, bg=(70,70,70))  # removed
 
             # handle clicks by polling mouse state on press
-            # but better to check MOUSEBUTTONDOWN events; check current mouse state only if clicked
             if pygame.mouse.get_pressed()[0]:
                 mx,my = pygame.mouse.get_pos()
                 # small debounce: require cursor to be within button area for selection
                 if btn_easy.collidepoint((mx,my)):
                     selected_difficulty = "easy"
+                    intro_prev_state = 'difficulty'
                     intro_state = 'menu'   # go back to menu after selection
                 elif btn_medium.collidepoint((mx,my)):
                     selected_difficulty = "medium"
+                    intro_prev_state = 'difficulty'
                     intro_state = 'menu'
                 elif btn_hard.collidepoint((mx,my)):
                     selected_difficulty = "hard"
+                    intro_prev_state = 'difficulty'
                     intro_state = 'menu'
-                elif back_btn.collidepoint((mx,my)):
-                    intro_state = 'menu'
-
+                # back navigation removed; use ESC to go back
         else:  # credits
             overlay = pygame.Surface((360,300), pygame.SRCALPHA)
             overlay.fill((0,0,0,200))
@@ -460,15 +524,15 @@ while running:
             hdr = font_big.render('Credits', True, (255,255,255))
             screen.blit(hdr, (200 - hdr.get_width()//2, 140))
             lines = [
-                "Creatori:",
+                "Creators:",
                 "Cănuță Andrei, Ciufu Andrei Laurențiu",
-                "Muzică: 'Hypnotic Jewels'",
+                "Music: 'Hypnotic Jewels'",
                 "by Eric Matyas soundimage.org"
             ]
             for i, ln in enumerate(lines):
                 surf = font_med.render(ln, True, (220,220,220))
                 screen.blit(surf, (200 - surf.get_width()//2, 190 + i*30))
-            draw_button(screen, back_btn, "Back", font_small, bg=(70,70,70))
+            # draw_button(screen, back_btn, "Back", font_small, bg=(70,70,70))  # removed
 
         pygame.display.update()
         clock.tick(30)
@@ -478,6 +542,24 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        # while confirmation overlay is active, only handle confirm-related events
+        elif show_exit_confirm:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                # ESC cancels confirmation
+                show_exit_confirm = False
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                yes_rect = pygame.Rect(120, 260, 80, 40)
+                no_rect = pygame.Rect(200, 260, 80, 40)
+                if yes_rect.collidepoint((mx, my)):
+                    # return to menu (do not restart game)
+                    show_intro = True
+                    intro_prev_state = 'main'
+                    intro_state = 'main'
+                    show_exit_confirm = False
+                elif no_rect.collidepoint((mx, my)):
+                    show_exit_confirm = False
+
         elif event.type == pygame.KEYDOWN and not game_over:
             if event.key == pygame.K_q:
                 running = False
@@ -485,10 +567,22 @@ while running:
                 restart()
             elif event.key == pygame.K_m:
                 if music_playing:
-                    pygame.mixer.music.pause()
+                    try:
+                        pygame.mixer.music.pause()
+                    except Exception:
+                        pass
+                    music_playing = False
                 else:
-                    pygame.mixer.music.unpause()
-                music_playing = not music_playing
+                    try:
+                        pygame.mixer.music.unpause()
+                    except Exception:
+                        pass
+                    if not pygame.mixer.music.get_busy():
+                        pygame.mixer.music.play(-1)
+                    music_playing = True
+            elif event.key == pygame.K_ESCAPE:
+                # show confirmation overlay to exit to menu
+                show_exit_confirm = True
             else:
                 moves_dict = {
                     pygame.K_UP: move_up,
@@ -527,11 +621,11 @@ while running:
     if not can_move(grid) and not game_over:
         game_over = True
         game_over_sound.play()
-        if music_playing:
-            pygame.mixer.music.pause()
-            music_playing = False
-        if score > high_score:
-            high_score = score
+    # sincronize music_playing flag with mixer (nu mai facem pause forțat aici)
+    music_playing = pygame.mixer.music.get_busy()
+    if score > high_score:
+        high_score = score
+
 
     # Draw frame
     screen.fill(BACKGROUND_COLOR)
@@ -573,6 +667,23 @@ while running:
             font = font_big if 'Game' in text else font_med
             surf = font.render(text, True, BLACK)
             screen.blit(surf, (200 - surf.get_width()//2, y))
+
+    # confirmation overlay for exiting to menu
+    if show_exit_confirm:
+        confirm_h = 140
+        overlay = pygame.Surface((360, confirm_h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 220))
+        # place overlay a bit lower to center over board area
+        screen.blit(overlay, (20, 220 - (confirm_h//2)))
+        title = font_big.render('EXIT', True, WHITE)
+        msg = font_med.render('Are you sure you want to quit?', True, WHITE)
+        screen.blit(title, (200 - title.get_width()//2, 230 - (confirm_h//2)))
+        screen.blit(msg, (200 - msg.get_width()//2, 260 - (confirm_h//2)))
+        # buttons
+        yes_rect = pygame.Rect(120, 260, 80, 40)
+        no_rect = pygame.Rect(200, 260, 80, 40)
+        draw_button(screen, yes_rect, "Yes", font_med, bg=(80,200,80), fg=WHITE)
+        draw_button(screen, no_rect, "No", font_med, bg=(200,80,80), fg=WHITE)
 
     pygame.display.flip()
     clock.tick(FPS)
